@@ -82,6 +82,7 @@
             font-size: 32px;
             font-weight: 700;
             background: linear-gradient(to right, #4cc9f0, #4361ee);
+            background-clip: text;
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
@@ -553,7 +554,6 @@
             max-width: 75%;
             padding: 16px;
             margin-bottom: 20px;
-            border-radius: var(--border-radius);
             position: relative;
             animation: fadeIn 0.3s ease;
         }
@@ -568,6 +568,7 @@
             background: rgba(30, 41, 59, 0.8);
             border: 1px solid rgba(255, 255, 255, 0.05);
             border-top-left-radius: 0;
+            border-radius: 0 var(--border-radius) var(--border-radius) var(--border-radius);
         }
 
         .message.sent {
@@ -575,6 +576,7 @@
             background: linear-gradient(135deg, var(--primary), var(--primary-dark));
             color: white;
             border-top-right-radius: 0;
+            border-radius: var(--border-radius) 0 var(--border-radius) var(--border-radius);
         }
 
         .message-info {
@@ -870,6 +872,45 @@
             line-height: 1.6;
             margin-bottom: 30px;
         }
+        
+        /* New room form */
+        .new-room-form {
+            display: none;
+            background: rgba(15, 23, 42, 0.8);
+            padding: 20px;
+            border-radius: 12px;
+            margin: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .new-room-form.active {
+            display: block;
+        }
+        
+        .form-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        .form-actions button {
+            flex: 1;
+            padding: 10px;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            font-weight: 500;
+        }
+        
+        .cancel-btn {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--accent);
+        }
+        
+        .create-btn {
+            background: var(--primary);
+            color: white;
+        }
     </style>
 </head>
 <body>
@@ -918,13 +959,26 @@
                     <span>Chat Rooms</span>
                     <span id="onlineCount">0 online</span>
                 </div>
+                
                 <ul class="room-list" id="roomList">
                     <!-- Rooms will be populated from localStorage -->
                 </ul>
-
+                
+                <div class="new-room-form" id="newRoomForm">
+                    <div class="form-group">
+                        <label for="roomName">Room Name</label>
+                        <input type="text" id="roomName" placeholder="Enter room name">
+                    </div>
+                    <div class="form-actions">
+                        <button class="cancel-btn" id="cancelRoomBtn">Cancel</button>
+                        <button class="create-btn" id="confirmCreateRoomBtn">Create</button>
+                    </div>
+                </div>
+                
                 <div class="create-room">
-                    <input type="text" id="newRoomInput" placeholder="Create new room...">
-                    <button id="createRoomBtn"><i class="fas fa-plus"></i></button>
+                    <button class="btn" id="showRoomFormBtn" style="width: 100%;">
+                        <i class="fas fa-plus"></i> Create New Room
+                    </button>
                 </div>
 
                 <div class="section-title">
@@ -1032,8 +1086,6 @@
             const messagesContainer = document.getElementById('messagesContainer');
             const messageInput = document.getElementById('messageInput');
             const sendButton = document.getElementById('sendButton');
-            const newRoomInput = document.getElementById('newRoomInput');
-            const createRoomBtn = document.getElementById('createRoomBtn');
             const roomUsers = document.getElementById('roomUsers');
             const onlineCount = document.getElementById('onlineCount');
             const notification = document.getElementById('notification');
@@ -1048,6 +1100,11 @@
             const clearBtn = document.getElementById('clearBtn');
             const switchUserBtn = document.getElementById('switchUserBtn');
             const userList = document.getElementById('userList');
+            const newRoomForm = document.getElementById('newRoomForm');
+            const showRoomFormBtn = document.getElementById('showRoomFormBtn');
+            const cancelRoomBtn = document.getElementById('cancelRoomBtn');
+            const confirmCreateRoomBtn = document.getElementById('confirmCreateRoomBtn');
+            const roomNameInput = document.getElementById('roomName');
             
             // App state
             let currentUser = '';
@@ -1061,7 +1118,9 @@
                 sendButton.addEventListener('click', sendMessage);
                 messageInput.addEventListener('keydown', handleInputKeydown);
                 messageInput.addEventListener('input', handleTyping);
-                createRoomBtn.addEventListener('click', createNewRoom);
+                showRoomFormBtn.addEventListener('click', showRoomForm);
+                cancelRoomBtn.addEventListener('click', hideRoomForm);
+                confirmCreateRoomBtn.addEventListener('click', createNewRoom);
                 mobileMenuBtn.addEventListener('click', toggleSidebar);
                 boldBtn.addEventListener('click', () => formatText('bold'));
                 italicBtn.addEventListener('click', () => formatText('italic'));
@@ -1171,4 +1230,506 @@
                             type: 'received'
                         };
                         
-                        //
+                        // Add response to UI
+                        addMessageToUI(responseObj);
+                        
+                        // Save response to localStorage
+                        saveMessage(responseObj);
+                        
+                        // Show notification
+                        showNotification(response, `New message from ${randomUser}`, 'info');
+                    }
+                }, 1000 + Math.random() * 2000);
+            }
+            
+            // Add message to UI
+            function addMessageToUI(messageObj) {
+                const messageElement = document.createElement('div');
+                messageElement.classList.add('message', messageObj.type);
+                
+                // Format message with basic formatting
+                let formattedMessage = messageObj.content
+                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') // Bold
+                    .replace(/\*(.*?)\*/g, '<em>$1</em>'); // Italics
+                
+                // Auto-detect links
+                formattedMessage = formattedMessage.replace(
+                    /(https?:\/\/[^\s]+)/g, 
+                    '<a href="$1" target="_blank" style="color: #4cc9f0; text-decoration: underline;">$1</a>'
+                );
+                
+                const timestamp = new Date(messageObj.timestamp).toLocaleTimeString([], { 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                });
+                
+                // Use actual sender name for all messages (not "You" for others)
+                const senderName = messageObj.sender;
+                
+                messageElement.innerHTML = `
+                    <div class="message-info">
+                        <span class="sender">${senderName}</span>
+                        <span class="timestamp">${timestamp}</span>
+                    </div>
+                    <div class="message-content">${formattedMessage}</div>
+                `;
+                
+                messagesContainer.appendChild(messageElement);
+                
+                // Scroll to bottom
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            }
+            
+            // Save message to localStorage
+            function saveMessage(messageObj) {
+                // Get existing messages or initialize array
+                const messages = JSON.parse(localStorage.getItem(`messages_${messageObj.room}`)) || [];
+                
+                // Add new message
+                messages.push(messageObj);
+                
+                // Save back to localStorage
+                localStorage.setItem(`messages_${messageObj.room}`, JSON.stringify(messages));
+                
+                // Update room last message
+                updateRoomLastMessage(messageObj.room, messageObj.content);
+            }
+            
+            // Update room last message
+            function updateRoomLastMessage(room, message) {
+                const rooms = JSON.parse(localStorage.getItem('chat_rooms')) || [];
+                const roomIndex = rooms.findIndex(r => r.name === room);
+                
+                if (roomIndex !== -1) {
+                    rooms[roomIndex].lastMessage = message;
+                    localStorage.setItem('chat_rooms', JSON.stringify(rooms));
+                    loadRooms();
+                }
+            }
+            
+            // Load messages for a room from localStorage
+            function loadMessages(room) {
+                // Clear current messages
+                messagesContainer.innerHTML = `
+                    <div class="typing-indicator" id="typingIndicator">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                        Typing...
+                    </div>
+                `;
+                
+                // Get messages from localStorage
+                const messages = JSON.parse(localStorage.getItem(`messages_${room}`)) || [];
+                
+                // Add welcome message if room is empty
+                if (messages.length === 0) {
+                    const welcomeMessage = {
+                        id: Date.now(),
+                        content: `Welcome to the ${room} chat room! Start a conversation with your team.`,
+                        sender: 'System',
+                        room: room,
+                        timestamp: new Date().toISOString(),
+                        type: 'received'
+                    };
+                    messages.push(welcomeMessage);
+                    saveMessage(welcomeMessage);
+                }
+                
+                // Render messages
+                messages.forEach(message => {
+                    addMessageToUI(message);
+                });
+            }
+            
+            // Handle Enter key for sending
+            function handleInputKeydown(e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                }
+                
+                // Auto-resize textarea
+                if (e.key === 'Enter' && e.shiftKey) {
+                    // Allow new line
+                } else {
+                    // Auto-resize
+                    setTimeout(() => {
+                        messageInput.style.height = 'auto';
+                        messageInput.style.height = (messageInput.scrollHeight) + 'px';
+                    }, 0);
+                }
+            }
+            
+            // Handle typing indicator
+            function handleTyping() {
+                // Auto-resize textarea
+                messageInput.style.height = 'auto';
+                messageInput.style.height = (messageInput.scrollHeight) + 'px';
+                
+                // Show typing indicator
+                if (messageInput.value.length > 0) {
+                    typingIndicator.style.display = 'block';
+                    
+                    // Clear previous timeout
+                    clearTimeout(typingTimeout);
+                    
+                    // Hide after 2 seconds
+                    typingTimeout = setTimeout(() => {
+                        typingIndicator.style.display = 'none';
+                    }, 2000);
+                } else {
+                    typingIndicator.style.display = 'none';
+                }
+            }
+            
+            // Initialize rooms
+            function initializeRooms() {
+                // Get rooms from localStorage or initialize default
+                let rooms = JSON.parse(localStorage.getItem('chat_rooms'));
+                
+                if (!rooms) {
+                    // Default rooms
+                    rooms = [
+                        { name: 'general', users: [], lastMessage: 'Welcome to the general chat!' },
+                        { name: 'design', users: [], lastMessage: 'Let\'s discuss our design system' },
+                        { name: 'development', users: [], lastMessage: 'Latest updates on the project' },
+                        { name: 'marketing', users: [], lastMessage: 'Campaign performance review' }
+                    ];
+                    localStorage.setItem('chat_rooms', JSON.stringify(rooms));
+                }
+                
+                // Render rooms
+                loadRooms();
+            }
+            
+            // Load rooms from localStorage
+            function loadRooms() {
+                const rooms = JSON.parse(localStorage.getItem('chat_rooms')) || [];
+                roomList.innerHTML = '';
+                
+                rooms.forEach(room => {
+                    const roomItem = document.createElement('li');
+                    roomItem.classList.add('room-item');
+                    if (room.name === activeRoom) {
+                        roomItem.classList.add('active');
+                    }
+                    roomItem.dataset.room = room.name;
+                    
+                    roomItem.innerHTML = `
+                        <div class="room-info">
+                            <div class="room-icon">
+                                <i class="fas fa-hashtag"></i>
+                            </div>
+                            <div class="room-details">
+                                <div class="room-name">${room.name.charAt(0).toUpperCase() + room.name.slice(1)}</div>
+                                <div class="room-last-msg">${room.lastMessage || 'No messages yet'}</div>
+                            </div>
+                        </div>
+                        <span class="room-users">${room.users.length}</span>
+                    `;
+                    
+                    roomItem.addEventListener('click', () => switchRoom(room.name));
+                    roomList.appendChild(roomItem);
+                });
+                
+                // Update online count
+                updateOnlineCount();
+            }
+            
+            // Update online user count
+            function updateOnlineCount() {
+                const rooms = JSON.parse(localStorage.getItem('chat_rooms')) || [];
+                let count = 0;
+                const uniqueUsers = new Set();
+                
+                rooms.forEach(room => {
+                    room.users.forEach(user => {
+                        uniqueUsers.add(user);
+                    });
+                });
+                
+                onlineCount.textContent = `${uniqueUsers.size} online`;
+            }
+            
+            // Switch chat room
+            function switchRoom(roomName) {
+                // Remove user from previous room
+                removeUserFromRoom(currentUser, activeRoom);
+                
+                activeRoom = roomName;
+                currentRoom.textContent = roomName.charAt(0).toUpperCase() + roomName.slice(1);
+                
+                // Update active room in list
+                roomList.querySelectorAll('.room-item').forEach(item => {
+                    if (item.dataset.room === roomName) {
+                        item.classList.add('active');
+                    } else {
+                        item.classList.remove('active');
+                    }
+                });
+                
+                // Add user to new room
+                addUserToRoom(currentUser, roomName);
+                
+                // Load messages for this room
+                loadMessages(roomName);
+                
+                // Update user list
+                updateUserList();
+                
+                showNotification(`You joined the ${roomName} room`, 'Room changed', 'info');
+            }
+            
+            // Get room from localStorage
+            function getRoom(roomName) {
+                const rooms = JSON.parse(localStorage.getItem('chat_rooms')) || [];
+                return rooms.find(room => room.name === roomName);
+            }
+            
+            // Add user to a room
+            function addUserToRoom(username, roomName) {
+                const rooms = JSON.parse(localStorage.getItem('chat_rooms')) || [];
+                const roomIndex = rooms.findIndex(room => room.name === roomName);
+                
+                if (roomIndex !== -1) {
+                    // Add user if not already in the room
+                    if (!rooms[roomIndex].users.includes(username)) {
+                        rooms[roomIndex].users.push(username);
+                    }
+                }
+                
+                // Save back to localStorage
+                localStorage.setItem('chat_rooms', JSON.stringify(rooms));
+                
+                // Update UI
+                loadRooms();
+                updateUserList();
+                
+                // Update room user count
+                const userCount = rooms[roomIndex].users.length;
+                roomUsers.textContent = `${userCount} user${userCount !== 1 ? 's' : ''}`;
+            }
+            
+            // Remove user from a room
+            function removeUserFromRoom(username, roomName) {
+                const rooms = JSON.parse(localStorage.getItem('chat_rooms')) || [];
+                const roomIndex = rooms.findIndex(room => room.name === roomName);
+                
+                if (roomIndex !== -1) {
+                    // Remove user from room
+                    rooms[roomIndex].users = rooms[roomIndex].users.filter(user => user !== username);
+                }
+                
+                // Save back to localStorage
+                localStorage.setItem('chat_rooms', JSON.stringify(rooms));
+                
+                // Update UI
+                loadRooms();
+            }
+            
+            // Get users in a room
+            function getRoomUsers(roomName) {
+                const room = getRoom(roomName);
+                return room ? room.users : [];
+            }
+            
+            // Update user list for current room
+            function updateUserList() {
+                const users = getRoomUsers(activeRoom);
+                userList.innerHTML = '';
+                
+                users.forEach(user => {
+                    const userItem = document.createElement('li');
+                    userItem.classList.add('user-item');
+                    
+                    userItem.innerHTML = `
+                        <div class="user-item-avatar">${user.charAt(0).toUpperCase()}</div>
+                        <div class="user-item-name">${user}</div>
+                        <div class="user-status"></div>
+                    `;
+                    
+                    userList.appendChild(userItem);
+                });
+            }
+            
+            // Show room creation form
+            function showRoomForm() {
+                newRoomForm.classList.add('active');
+                roomNameInput.focus();
+            }
+            
+            // Hide room creation form
+            function hideRoomForm() {
+                newRoomForm.classList.remove('active');
+                roomNameInput.value = '';
+            }
+            
+            // Create new room
+            function createNewRoom() {
+                const roomName = roomNameInput.value.trim();
+                
+                if (!roomName) {
+                    showNotification('Please enter a room name', 'Room name required', 'danger');
+                    return;
+                }
+                
+                if (roomName.length < 3) {
+                    showNotification('Room name must be at least 3 characters', 'Invalid room name', 'danger');
+                    return;
+                }
+                
+                // Check if room already exists
+                const rooms = JSON.parse(localStorage.getItem('chat_rooms')) || [];
+                if (rooms.some(room => room.name === roomName.toLowerCase())) {
+                    showNotification('Room already exists', 'Duplicate room', 'danger');
+                    return;
+                }
+                
+                // Add new room
+                rooms.push({
+                    name: roomName.toLowerCase(),
+                    users: [currentUser],
+                    lastMessage: 'New room created'
+                });
+                
+                // Save to localStorage
+                localStorage.setItem('chat_rooms', JSON.stringify(rooms));
+                
+                // Clear input
+                roomNameInput.value = '';
+                hideRoomForm();
+                
+                // Switch to new room
+                switchRoom(roomName.toLowerCase());
+                
+                showNotification(`Created new room: ${roomName}`, 'Room created', 'success');
+            }
+            
+            // Format text in message input
+            function formatText(type) {
+                const start = messageInput.selectionStart;
+                const end = messageInput.selectionEnd;
+                const selectedText = messageInput.value.substring(start, end);
+                let newText = '';
+                
+                switch(type) {
+                    case 'bold':
+                        newText = `**${selectedText}**`;
+                        break;
+                    case 'italic':
+                        newText = `*${selectedText}*`;
+                        break;
+                    case 'link':
+                        const url = prompt('Enter URL:', 'https://');
+                        if (url) {
+                            newText = `[${selectedText}](${url})`;
+                        } else {
+                            return; // User canceled
+                        }
+                        break;
+                }
+                
+                // Update input value
+                messageInput.value = 
+                    messageInput.value.substring(0, start) + 
+                    newText + 
+                    messageInput.value.substring(end);
+                
+                // Set selection back
+                messageInput.focus();
+                messageInput.setSelectionRange(start + newText.length, start + newText.length);
+            }
+            
+            // Clear formatting from message input
+            function clearFormatting() {
+                const start = messageInput.selectionStart;
+                const end = messageInput.selectionEnd;
+                const selectedText = messageInput.value.substring(start, end);
+                
+                // Remove formatting
+                let newText = selectedText
+                    .replace(/\*\*(.*?)\*\*/g, '$1') // Remove bold
+                    .replace(/\*(.*?)\*/g, '$1')      // Remove italic
+                    .replace(/\[(.*?)\]\(.*?\)/g, '$1'); // Remove links
+                
+                // Update input value
+                messageInput.value = 
+                    messageInput.value.substring(0, start) + 
+                    newText + 
+                    messageInput.value.substring(end);
+                
+                // Set selection back
+                messageInput.focus();
+                messageInput.setSelectionRange(start, start + newText.length);
+            }
+            
+            // Switch user
+            function switchUser() {
+                // Remove user from current room
+                removeUserFromRoom(currentUser, activeRoom);
+                
+                // Clear UI
+                authScreen.style.display = 'flex';
+                appScreen.style.display = 'none';
+                usernameInput.value = '';
+                usernameInput.focus();
+                
+                showNotification('Switched user. Please log in again.', 'User switched', 'info');
+            }
+            
+            // Show notification
+            function showNotification(message, title = 'Notification', type = 'info') {
+                notificationMessage.textContent = message;
+                notification.style.display = 'flex';
+                
+                // Set color based on type
+                if (type === 'danger') {
+                    notification.style.background = 'var(--danger)';
+                } else if (type === 'success') {
+                    notification.style.background = 'var(--success)';
+                } else {
+                    notification.style.background = 'var(--info)';
+                }
+                
+                // Hide after 4 seconds
+                setTimeout(() => {
+                    notification.style.display = 'none';
+                }, 4000);
+            }
+            
+            // Toggle sidebar on mobile
+            function toggleSidebar() {
+                sidebar.classList.toggle('active');
+            }
+            
+            // Simulate other users
+            function simulateOtherUsers() {
+                const users = ['Alex Johnson', 'Sarah Williams', 'Michael Chen', 'Emma Davis'];
+                users.forEach(user => {
+                    if (user !== currentUser) {
+                        addUserToRoom(user, activeRoom);
+                    }
+                });
+                
+                // Add initial messages
+                setTimeout(() => {
+                    const welcomeMessage = {
+                        id: Date.now(),
+                        content: `Welcome to the team, ${currentUser}! We're excited to have you here.`,
+                        sender: 'Alex Johnson',
+                        room: activeRoom,
+                        timestamp: new Date().toISOString(),
+                        type: 'received'
+                    };
+                    addMessageToUI(welcomeMessage);
+                    saveMessage(welcomeMessage);
+                }, 1000);
+            }
+            
+            // Initialize the application
+            initApp();
+        });
+    </script>
+</body>
+</html>
